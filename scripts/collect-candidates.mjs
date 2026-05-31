@@ -17,12 +17,9 @@ await fs.mkdir(artifactsDir, { recursive: true });
 
 const recommendedLog = await readJsonArray(logPath);
 const sourceRows = await loadTencentRows();
-const candidates = sourceRows
-  .map((row, index) => normalizeRow(row, index + 1))
-  .filter((book) => book.title)
-  .filter((book) => !isExcludedStatus(book.status))
-  .filter((book) => !isAlreadyRecommended(book, recommendedLog))
-  .slice(0, maxCandidates);
+const selection = selectCandidates(sourceRows, recommendedLog);
+await writeSelectionDiagnostics(selection);
+const candidates = selection.selected.slice(0, maxCandidates);
 
 const enriched = await enrichWithJd(candidates);
 await writeArtifacts(enriched);
@@ -243,6 +240,27 @@ async function readJsonArray(filePath) {
   }
 }
 
+function selectCandidates(rows, log) {
+  const normalized = rows.map((row, index) => normalizeRow(row, index + 1));
+  const withoutTitle = normalized.filter((book) => !book.title);
+  const statusExcluded = normalized.filter((book) => book.title && isExcludedStatus(book.status));
+  const logExcluded = normalized.filter((book) =>
+    book.title && !isExcludedStatus(book.status) && isAlreadyRecommended(book, log)
+  );
+  const selected = normalized.filter((book) =>
+    book.title && !isExcludedStatus(book.status) && !isAlreadyRecommended(book, log)
+  );
+
+  return {
+    rawRowCount: rows.length,
+    normalized,
+    withoutTitle,
+    statusExcluded,
+    logExcluded,
+    selected
+  };
+}
+
 async function writeTencentDiagnostics(page, visibleText) {
   await fs.writeFile(path.join(artifactsDir, "tencent-doc-visible-text.txt"), visibleText, "utf8");
   await fs.writeFile(path.join(artifactsDir, "tencent-doc-page.html"), await page.content(), "utf8");
@@ -254,6 +272,30 @@ async function writeArtifacts(books) {
   const mdPath = path.join(artifactsDir, "candidates.md");
   await fs.writeFile(jsonPath, `${JSON.stringify(books, null, 2)}\n`, "utf8");
   await fs.writeFile(mdPath, renderMarkdown(books), "utf8");
+}
+
+async function writeSelectionDiagnostics(selection) {
+  await fs.writeFile(
+    path.join(artifactsDir, "selection-debug.json"),
+    `${JSON.stringify(selection, null, 2)}\n`,
+    "utf8"
+  );
+
+  const lines = [
+    "# Selection Debug",
+    "",
+    `Raw rows read from Tencent document: ${selection.rawRowCount}`,
+    `Rows without title: ${selection.withoutTitle.length}`,
+    `Rows excluded by Tencent document status: ${selection.statusExcluded.length}`,
+    `Rows excluded by recommended log: ${selection.logExcluded.length}`,
+    `Rows selected before maxCandidates limit: ${selection.selected.length}`,
+    "",
+    "## Selected Rows",
+    "",
+    ...selection.selected.map((book) => `- #${book.sourceIndex} ${book.title} / ${book.author || "no author"} / ${book.status || "no status"}`)
+  ];
+
+  await fs.writeFile(path.join(artifactsDir, "selection-debug.md"), `${lines.join("\n")}\n`, "utf8");
 }
 
 function renderMarkdown(books) {
