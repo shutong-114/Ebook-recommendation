@@ -42,22 +42,31 @@ async function loadTencentRows() {
 
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.goto(tencentDocUrl, { waitUntil: "networkidle", timeout: 60000 });
-  await page.waitForTimeout(3000);
+  try {
+    await page.goto(tencentDocUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.locator("body").waitFor({ state: "visible", timeout: 30000 });
+    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(3000);
 
-  const tableRows = await page.locator("table tr").evaluateAll((rows) =>
-    rows.map((row) => Array.from(row.querySelectorAll("th,td")).map((cell) => cell.innerText.trim()))
-  ).catch(() => []);
+    const tableRows = await page.locator("table tr").evaluateAll((rows) =>
+      rows.map((row) => Array.from(row.querySelectorAll("th,td")).map((cell) => cell.innerText.trim()))
+    ).catch(() => []);
 
-  let parsedRows = rowsFromMatrix(tableRows);
+    let parsedRows = rowsFromMatrix(tableRows);
 
-  if (parsedRows.length === 0) {
-    const visibleText = await page.locator("body").innerText();
-    parsedRows = parseLooseTextTable(visibleText);
+    if (parsedRows.length === 0) {
+      const visibleText = await page.locator("body").innerText();
+      await writeTencentDiagnostics(page, visibleText);
+      parsedRows = parseLooseTextTable(visibleText);
+    }
+
+    return parsedRows;
+  } catch (error) {
+    await writeTencentDiagnostics(page, `Tencent document load failed: ${error.message}`).catch(() => {});
+    throw error;
+  } finally {
+    await browser.close();
   }
-
-  await browser.close();
-  return parsedRows;
 }
 
 async function enrichWithJd(books) {
@@ -232,6 +241,12 @@ async function readJsonArray(filePath) {
   } catch {
     return [];
   }
+}
+
+async function writeTencentDiagnostics(page, visibleText) {
+  await fs.writeFile(path.join(artifactsDir, "tencent-doc-visible-text.txt"), visibleText, "utf8");
+  await fs.writeFile(path.join(artifactsDir, "tencent-doc-page.html"), await page.content(), "utf8");
+  await page.screenshot({ path: path.join(artifactsDir, "tencent-doc-page.png"), fullPage: true });
 }
 
 async function writeArtifacts(books) {

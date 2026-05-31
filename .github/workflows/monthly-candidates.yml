@@ -37,10 +37,12 @@ jobs:
         run: npm run collect:candidates
 
       - name: Upload candidate artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ebook-candidates
           path: artifacts/
+          if-no-files-found: ignore
 
       - name: Prepare labels
         env:
