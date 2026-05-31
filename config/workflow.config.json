@@ -1,0 +1,14 @@
+{
+  "maxCandidates": 10,
+  "outputRoot": "output",
+  "templatePath": "template/book-template.html",
+  "columns": {
+    "title": ["书名", "标题", "title", "name"],
+    "author": ["作者", "author"],
+    "jdUrl": ["京东读书链接", "京东链接", "jdUrl", "url", "link"],
+    "category": ["分类", "类型", "category"],
+    "status": ["推荐状态", "状态", "status"],
+    "notes": ["备注", "notes"]
+  },
+  "excludedStatuses": ["已推荐", "跳过", "不推荐"]
+}

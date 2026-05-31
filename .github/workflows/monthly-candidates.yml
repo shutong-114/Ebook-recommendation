@@ -1,0 +1,61 @@
+name: Monthly ebook candidates
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 1 1 * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Collect candidate books
+        env:
+          TENCENT_DOC_URL: ${{ secrets.TENCENT_DOC_URL }}
+          TENCENT_DOC_CSV_URL: ${{ secrets.TENCENT_DOC_CSV_URL }}
+          MAX_CANDIDATES: ${{ vars.MAX_CANDIDATES }}
+        run: npm run collect:candidates
+
+      - name: Upload candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ebook-candidates
+          path: artifacts/
+
+      - name: Prepare labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create ebook-candidates --description "Monthly ebook recommendation candidates" --color "0969da" --force
+          gh label create pending-confirmation --description "Waiting for manual confirmation" --color "fbca04" --force
+
+      - name: Create confirmation issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="$(node -e "const d=new Date(); const ym=d.toISOString().slice(0,7); console.log(ym + ' 电子书推荐候选清单')")"
+          gh issue create \
+            --title "$title" \
+            --body-file artifacts/candidates.md \
+            --label "ebook-candidates" \
+            --label "pending-confirmation"

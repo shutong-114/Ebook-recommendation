@@ -1,0 +1,13 @@
+{
+  "name": "ebook-recommendation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "collect:candidates": "node scripts/collect-candidates.mjs",
+    "check": "node --check scripts/collect-candidates.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.1"
+  }
+}
