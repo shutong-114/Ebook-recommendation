@@ -29,7 +29,36 @@
 可以在 Codex App 中创建一个定期提醒，提示词建议使用：
 
 ```text
-检查 GitHub 仓库 shutong-114/Ebook-recommendation 中带有 ebook-candidates 和 pending-confirmation 标签的最新 Issue。读取候选书资料，整理成待确认清单，并询问我确认哪些书。确认前不要生成文件。确认后，使用仓库中的 template/book-template.html 为每本确认书籍生成推荐网页，写入 output/YYYY-MM/书名/index.html，并更新 data/recommended-log.json。
+检查 GitHub 仓库 shutong-114/Ebook-recommendation 中带有 ebook-candidates 和 pending-confirmation 标签的最新 Issue。读取候选书资料，整理成待确认清单，并询问我确认哪些书。确认前不要生成文件。确认后，使用仓库中的正式模板生成推荐网页；只允许修改内容简介、作者简介、推荐理由，以及按照京东读书资料修改前四章名称，不要改动模板的其他结构、样式或说明文字。输出写入 output/YYYY-MM/书名/index.html，并更新 data/recommended-log.json。
+```
+
+## 正式模板修改边界
+
+正式模板位于 `template/template-银河帝国1：基地.txt`。生成推荐页时只允许替换以下内容：
+
+- `内容简介`
+- `作者简介`
+- `推荐理由`
+- 目录中的第一章、第二章、第三章、第四章名称
+
+不要修改模板中的其他 HTML、样式、获取方式、封面上传提示或二维码说明。
+
+如需用脚本渲染，可以准备一个 JSON 文件：
+
+```json
+{
+  "title": "书名",
+  "contentIntro": "内容简介文案",
+  "authorIntro": "作者简介文案",
+  "recommendation": "推荐理由文案",
+  "chapters": ["第一章名称", "第二章名称", "第三章名称", "第四章名称"]
+}
+```
+
+然后运行：
+
+```text
+npm run render:recommendation -- book.json output/YYYY-MM/书名/index.html
 ```
 
 ## 手动触发

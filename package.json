@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "collect:candidates": "node scripts/collect-candidates.mjs",
-    "check": "node --check scripts/collect-candidates.mjs"
+    "render:recommendation": "node scripts/render-recommendation.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check scripts/collect-candidates.mjs && node --check scripts/render-recommendation.mjs && node --check scripts/chapter-extract.mjs"
   },
   "dependencies": {
     "playwright": "^1.49.1"

@@ -1,7 +1,7 @@
 {
   "maxCandidates": 10,
   "outputRoot": "output",
-  "templatePath": "template/book-template.html",
+  "templatePath": "template/template-银河帝国1：基地.txt",
   "columns": {
     "title": ["书名", "标题", "title", "name"],
     "author": ["作者", "author"],

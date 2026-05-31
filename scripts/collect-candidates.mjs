@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { extractFirstFourChaptersFromText } from "./chapter-extract.mjs";
 
 const rootDir = process.cwd();
 const artifactsDir = path.join(rootDir, "artifacts");
@@ -89,13 +90,16 @@ async function readJdBook(page, url) {
     ]);
     const description = await metaContent(page, "meta[name='description'], meta[property='og:description']");
     const image = await metaContent(page, "meta[property='og:image']");
+    const visibleText = await page.locator("body").innerText().catch(() => "");
+    const chapters = extractFirstFourChaptersFromText(visibleText);
 
     return {
       verified: /jd\.com|jdread|e-m\.jd\.com/i.test(finalUrl),
       url: finalUrl,
       title,
       description,
-      image
+      image,
+      chapters
     };
   } catch (error) {
     return {
@@ -264,6 +268,7 @@ function renderMarkdown(books) {
     lines.push(`- 京东读书校验：${book.jd?.verified ? "通过" : "未通过"}`);
     if (book.jd?.title) lines.push(`- 京东页面标题：${book.jd.title}`);
     if (book.jd?.description) lines.push(`- 京东简介：${book.jd.description}`);
+    if (book.jd?.chapters?.some(Boolean)) lines.push(`- 京东前四章：${book.jd.chapters.filter(Boolean).join("；")}`);
     if (book.jd?.image) lines.push(`- 封面：${book.jd.image}`);
     if (book.notes) lines.push(`- 备注：${book.notes}`);
     if (book.jd?.reason) lines.push(`- 抓取提示：${book.jd.reason}`);
