@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { extractFirstFourChaptersFromText } from "./chapter-extract.mjs";
+import { extractJdBooksFromAnchors, filterJdBooksAgainstTencentRows } from "./jd-search.mjs";
 
 const rootDir = process.cwd();
 const artifactsDir = path.join(rootDir, "artifacts");
@@ -12,16 +13,21 @@ const config = JSON.parse(await fs.readFile(configPath, "utf8"));
 const maxCandidates = Number(process.env.MAX_CANDIDATES || config.maxCandidates || 10);
 const tencentDocUrl = process.env.TENCENT_DOC_URL;
 const tencentDocCsvUrl = process.env.TENCENT_DOC_CSV_URL;
+const jdSearchUrl = process.env.JD_SEARCH_URL || config.jdSearchUrl || "https://e.jd.com/view_search";
+const jdSearchKeywords = parseList(process.env.JD_SEARCH_KEYWORDS || "").length > 0
+  ? parseList(process.env.JD_SEARCH_KEYWORDS)
+  : config.jdSearchKeywords || [];
 
 await fs.mkdir(artifactsDir, { recursive: true });
 
 const recommendedLog = await readJsonArray(logPath);
 const sourceRows = await loadTencentRows();
-const selection = selectCandidates(sourceRows, recommendedLog);
-await writeSelectionDiagnostics(selection);
-const candidates = selection.selected.slice(0, maxCandidates);
+const tencentBooks = sourceRows.map((row, index) => normalizeRow(row, index + 1));
+const jdSearch = await searchJdBooks(maxCandidates * 4);
+const selection = filterJdBooksAgainstTencentRows(jdSearch.books, tencentBooks, recommendedLog, maxCandidates);
+await writeSelectionDiagnostics({ ...selection, rawRowCount: sourceRows.length, jdSearch });
 
-const enriched = await enrichWithJd(candidates);
+const enriched = await enrichWithJd(selection.selected);
 await writeArtifacts(enriched);
 
 async function loadTencentRows() {
@@ -80,6 +86,83 @@ async function enrichWithJd(books) {
 
   await browser.close();
   return enriched;
+}
+
+async function searchJdBooks(targetCount) {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  const searches = jdSearchKeywords.length > 0 ? jdSearchKeywords : [""];
+  const books = [];
+  const diagnostics = [];
+
+  try {
+    for (const keyword of searches) {
+      if (books.length >= targetCount) break;
+      const result = await searchJdPage(page, keyword);
+      diagnostics.push(result.diagnostic);
+      books.push(...result.books);
+    }
+  } finally {
+    await browser.close();
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const book of books) {
+    const key = normalize(book.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(book);
+    if (unique.length >= targetCount) break;
+  }
+
+  await fs.writeFile(
+    path.join(artifactsDir, "jd-search-debug.json"),
+    `${JSON.stringify({ diagnostics, books: unique }, null, 2)}\n`,
+    "utf8"
+  );
+  return { books: unique, diagnostics };
+}
+
+async function searchJdPage(page, keyword) {
+  await page.goto(jdSearchUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.locator("body").waitFor({ state: "visible", timeout: 30000 });
+  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+
+  if (keyword) {
+    const input = page.locator("input[type='search'], input[type='text']").first();
+    if (await input.count()) {
+      await input.fill(keyword);
+      await input.press("Enter").catch(() => {});
+      await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    }
+  }
+
+  await page.waitForTimeout(2500);
+  const anchors = await page.locator("a").evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      text: node.innerText || node.textContent || "",
+      href: node.href || ""
+    }))
+  );
+  const books = extractJdBooksFromAnchors(anchors, page.url());
+
+  await fs.writeFile(
+    path.join(artifactsDir, `jd-search-${safeFilePart(keyword || "default")}.txt`),
+    await page.locator("body").innerText().catch(() => ""),
+    "utf8"
+  );
+
+  return {
+    books,
+    diagnostic: {
+      keyword,
+      url: page.url(),
+      anchors: anchors.length,
+      books: books.length
+    }
+  };
 }
 
 async function readJdBook(page, url) {
@@ -173,6 +256,14 @@ function isAlreadyRecommended(book, log) {
 
 function normalize(value) {
   return String(value).trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function parseList(value) {
+  return String(value || "").split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function safeFilePart(value) {
+  return String(value || "default").replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 40) || "default";
 }
 
 function parseCsv(text) {
@@ -285,14 +376,15 @@ async function writeSelectionDiagnostics(selection) {
     "# Selection Debug",
     "",
     `Raw rows read from Tencent document: ${selection.rawRowCount}`,
-    `Rows without title: ${selection.withoutTitle.length}`,
-    `Rows excluded by Tencent document status: ${selection.statusExcluded.length}`,
+    `JD books found before filtering: ${selection.jdSearch.books.length}`,
+    `Rows excluded by Tencent document status: ${selection.recommendedExcluded.length}`,
     `Rows excluded by recommended log: ${selection.logExcluded.length}`,
-    `Rows selected before maxCandidates limit: ${selection.selected.length}`,
+    `Duplicate JD rows excluded: ${selection.duplicateExcluded.length}`,
+    `Rows selected: ${selection.selected.length}`,
     "",
     "## Selected Rows",
     "",
-    ...selection.selected.map((book) => `- #${book.sourceIndex} ${book.title} / ${book.author || "no author"} / ${book.status || "no status"}`)
+    ...selection.selected.map((book) => `- ${book.title} / ${book.jdUrl || "no url"} / ${book.status || "no Tencent status"}`)
   ];
 
   await fs.writeFile(path.join(artifactsDir, "selection-debug.md"), `${lines.join("\n")}\n`, "utf8");
@@ -320,7 +412,8 @@ function renderMarkdown(books) {
     lines.push(`### ${book.id}. ${book.title}`);
     lines.push(`- 作者：${book.author || "未提供"}`);
     lines.push(`- 分类：${book.category || "未提供"}`);
-    lines.push(`- 腾讯文档来源行：${book.sourceIndex}`);
+    lines.push(`- 候选序号：${book.sourceIndex}`);
+    lines.push(`- 腾讯文档状态：${book.status || "未记录为已推荐"}`);
     lines.push(`- 京东读书链接：${book.jdUrl || "未提供"}`);
     lines.push(`- 京东读书校验：${book.jd?.verified ? "通过" : "未通过"}`);
     if (book.jd?.title) lines.push(`- 京东页面标题：${book.jd.title}`);

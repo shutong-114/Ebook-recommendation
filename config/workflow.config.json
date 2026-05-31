@@ -1,5 +1,7 @@
 {
   "maxCandidates": 10,
+  "jdSearchUrl": "https://e.jd.com/view_search",
+  "jdSearchKeywords": [],
   "outputRoot": "output",
   "templatePath": "template/template-银河帝国1：基地.txt",
   "columns": {

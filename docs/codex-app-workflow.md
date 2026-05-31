@@ -2,7 +2,7 @@
 
 这个仓库的自动化分成两段：
 
-1. GitHub Actions 每月运行 Playwright，读取腾讯文档和京东读书页面，并创建候选书 Issue。
+1. GitHub Actions 每月运行 Playwright，在京东读书中搜索候选书，再读取腾讯文档判断是否已推荐，并创建候选书 Issue。
 2. 你打开 Codex App，让 Codex 读取候选 Issue。你确认书籍后，Codex 再生成推荐网页文件。
 
 ## 仓库 Secrets
@@ -23,6 +23,16 @@
 ```
 
 `推荐状态` 中包含 `已推荐`、`跳过`、`不推荐` 的行会被排除。
+
+## 京东读书搜索
+
+候选书来源于京东读书。默认会读取 `https://e.jd.com/view_search` 页面中的图书候选，并返回最多 10 本未推荐书。可以在 GitHub 仓库的 `Settings -> Secrets and variables -> Actions -> Variables` 中添加：
+
+- `JD_SEARCH_URL`：可选。自定义京东读书搜索入口，默认是 `https://e.jd.com/view_search`。
+- `JD_SEARCH_KEYWORDS`：可选。搜索关键词，多个关键词用逗号分隔，例如 `文学,历史,科幻`。
+- `MAX_CANDIDATES`：可选。返回候选数量，默认是 `10`。
+
+脚本会用腾讯文档中的 `推荐状态` 判断是否已推荐；只有未命中 `已推荐`、`跳过`、`不推荐` 的京东读书结果会进入候选清单。
 
 ## Codex App 自动化提示词
 

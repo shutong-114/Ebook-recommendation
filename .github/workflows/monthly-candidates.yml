@@ -33,6 +33,8 @@ jobs:
         env:
           TENCENT_DOC_URL: ${{ secrets.TENCENT_DOC_URL }}
           TENCENT_DOC_CSV_URL: ${{ secrets.TENCENT_DOC_CSV_URL }}
+          JD_SEARCH_URL: ${{ vars.JD_SEARCH_URL }}
+          JD_SEARCH_KEYWORDS: ${{ vars.JD_SEARCH_KEYWORDS }}
           MAX_CANDIDATES: ${{ vars.MAX_CANDIDATES }}
         run: npm run collect:candidates
 
